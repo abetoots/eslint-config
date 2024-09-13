@@ -1,0 +1,31 @@
+{
+  "name": "@satoshibits/eslint-config",
+  "version": "1.0.0",
+  "main": "./src/index.mjs",
+  "private": false,
+  "scripts": {},
+  "keywords": [
+    "eslint",
+    "eslint-config"
+  ],
+  "author": "Abe Caymo (https://abecaymo.netlify.app/)",
+  "license": "ISC",
+  "description": "The eslint configuration for satoshibits projects.",
+  "peerDependencies": {
+    "@typescript-eslint/eslint-plugin": ">= 8.5.0",
+    "@typescript-eslint/parser": ">= 8.5.0",
+    "eslint": ">= 9.10.0",
+    "eslint-config-prettier": ">= 9.1.0",
+    "eslint-import-resolver-typescript": ">= 3.6.3",
+    "eslint-plugin-import": ">= 2.30.0"
+  },
+  "packageManager": "pnpm@9.7.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/abetoots/eslint-config.git"
+  },
+  "bugs": {
+    "url": "https://github.com/abetoots/eslint-config/issues"
+  },
+  "homepage": "https://github.com/abetoots/eslint-config#readme"
+}
