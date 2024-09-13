@@ -2,6 +2,7 @@
   "name": "@satoshibits/eslint-config",
   "version": "1.0.1",
   "main": "./src/index.mjs",
+  "types": "./src/index.d.ts",
   "private": false,
   "scripts": {},
   "keywords": [
