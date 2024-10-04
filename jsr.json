@@ -3,6 +3,6 @@
   "name": "@satoshibits/eslint-config",
   "description": "The eslint configuration for satoshibits projects.",
   "version": "2.0.0",
-  "exports": "./dist/index.mjs",
+  "exports": "./src/index.mts",
   "license": "ISC"
 }
