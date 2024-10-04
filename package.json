@@ -1,12 +1,15 @@
 {
   "name": "@satoshibits/eslint-config",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "main": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
   "private": false,
   "scripts": {
     "build": "rm -rf dist && tsc"
   },
+  "files": [
+    "./dist/**/*"
+  ],
   "keywords": [
     "eslint",
     "eslint-config"
