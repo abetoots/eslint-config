@@ -1,11 +1,12 @@
 {
   "name": "@satoshibits/eslint-config",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "main": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
   "private": false,
   "scripts": {
-    "build": "rm -rf dist && tsc"
+    "build": "rm -rf dist && tsc",
+    "prepublishOnly": "npm run build"
   },
   "files": [
     "./dist/**/*"
