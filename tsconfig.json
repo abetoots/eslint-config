@@ -6,6 +6,7 @@
     "moduleResolution": "NodeNext",
     "allowSyntheticDefaultImports": true,
     "outDir": "dist",
+    "rootDir": "src",
     "declaration": true
   },
   "exclude": ["node_modules", "dist"]
