@@ -35,3 +35,27 @@ const conf: TSESLint.FlatConfig.ConfigArray = tseslint.config(
 );
 
 export default conf;
+
+// The same preset without type information: the syntactic halves of the typed
+// configurations plus the trimmed import-x rules, for the edit loop and for commit
+// hooks, where loading the whole program (minutes, gigabytes) buys nothing a push-time
+// typed pass and the typecheck do not catch. No `projectService` here, and nothing
+// from `recommendedTypeChecked` or `stylisticTypeChecked`.
+export const fast: TSESLint.FlatConfig.ConfigArray = tseslint.config(
+  eslint.configs.recommended,
+  ...tseslint.configs.recommended,
+  ...tseslint.configs.stylistic,
+  eslintPluginImportX.flatConfigs.recommended,
+  eslintPluginImportX.flatConfigs.typescript,
+  {
+    name: "satoshibits/import-x-rules-typescript-covers",
+    rules: {
+      "import-x/named": "off",
+      "import-x/namespace": "off",
+      "import-x/default": "off",
+      "import-x/no-named-as-default-member": "off",
+      "import-x/no-unresolved": "off",
+    },
+  },
+  eslintConfigPrettier,
+);
