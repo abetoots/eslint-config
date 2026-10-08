@@ -1,6 +1,6 @@
 {
   "name": "@satoshibits/eslint-config",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "main": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
   "type": "module",
@@ -9,23 +9,28 @@
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs",
       "default": "./dist/index.mjs"
-    }
+    },
+    "./oxlint": "./oxlint.json"
   },
   "private": false,
   "scripts": {
     "build": "rm -rf dist && tsc",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "test": "node --test oxlint.test.mjs"
   },
   "files": [
-    "./dist/**/*"
+    "./dist/**/*",
+    "./oxlint.json"
   ],
   "keywords": [
     "eslint",
-    "eslint-config"
+    "eslint-config",
+    "oxlint",
+    "oxlint-config"
   ],
   "author": "Abe Caymo (https://abecaymo.netlify.app/)",
   "license": "ISC",
-  "description": "The eslint configuration for satoshibits projects.",
+  "description": "The lint configuration for satoshibits projects: an ESLint flat config and the same rule set for oxlint.",
   "peerDependencies": {
     "@eslint/js": "^9.13.0",
     "eslint": ">= 9.13.0",
@@ -33,7 +38,9 @@
     "eslint-import-resolver-typescript": ">= 3.6.3",
     "eslint-plugin-import-x": ">= 4.3.1",
     "typescript": ">= 5.6.2",
-    "typescript-eslint": ">= 8.15.0"
+    "typescript-eslint": ">= 8.15.0",
+    "oxlint": ">= 1.87.0",
+    "oxlint-tsgolint": ">= 7.0.0"
   },
   "packageManager": "pnpm@9.7.1",
   "repository": {
@@ -53,5 +60,13 @@
     "eslint-plugin-import-x": "^4.16.1",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.36.0"
+  },
+  "peerDependenciesMeta": {
+    "oxlint": {
+      "optional": true
+    },
+    "oxlint-tsgolint": {
+      "optional": true
+    }
   }
 }
