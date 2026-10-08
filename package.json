@@ -10,12 +10,13 @@
       "import": "./dist/index.mjs",
       "default": "./dist/index.mjs"
     },
-    "./oxlint": "./oxlint.json"
+    "./oxlint": "./oxlint.json",
+    "./oxlint.json": "./oxlint.json"
   },
   "private": false,
   "scripts": {
     "build": "rm -rf dist && tsc",
-    "prepublishOnly": "npm run build",
+    "prepublishOnly": "npm test && npm run build",
     "test": "node --test oxlint.test.mjs"
   },
   "files": [
@@ -40,7 +41,7 @@
     "typescript": ">= 5.6.2",
     "typescript-eslint": ">= 8.15.0",
     "oxlint": ">= 1.87.0",
-    "oxlint-tsgolint": ">= 7.0.0"
+    "oxlint-tsgolint": ">= 7.0.2003"
   },
   "packageManager": "pnpm@9.7.1",
   "repository": {
