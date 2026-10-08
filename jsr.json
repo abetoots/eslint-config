@@ -1,8 +1,8 @@
 {
   "$schema": "https://jsr.io/schema/config-file.v1.json",
   "name": "@satoshibits/eslint-config",
-  "description": "The eslint configuration for satoshibits projects.",
-  "version": "2.3.0",
+  "description": "The eslint configuration for satoshibits projects. (The oxlint export is in the npm package only.)",
+  "version": "2.4.0",
   "exports": "./src/index.mts",
   "license": "ISC"
 }
