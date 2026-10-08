@@ -339,8 +339,10 @@ test("oxlint: every rule in the file is a rule of oxlint's, under the name its t
 
 test("oxlint: a consumer with only the extends line gets the rules, with type information", () => {
   const { findings } = lint(PRESET);
-  // a typed rule with no --type-aware flag, a core rule with its options (the `_ignored`
-  // parameter is not reported), a rule from the TypeScript override, and a warning
+  // a typed rule with no --type-aware flag, a core rule, a rule from the TypeScript
+  // override, and a warning. (The rule options are held by the shape tests: oxlint's own
+  // default for no-unused-vars already ignores the `_ignored` parameter, so this run
+  // cannot tell the preset's options from none.)
   assert.deepEqual(inFile(findings, "probe.ts"), PROBE);
   assert.deepEqual(inFile(findings, "a.ts"), []);
 });
