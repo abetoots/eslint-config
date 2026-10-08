@@ -249,6 +249,16 @@ test("the package ships the file, resolves it under both names, and keeps its ma
   assert.doesNotMatch(pkg.description, /same rule set/);
 });
 
+test("the build leaves the test projects alone", () => {
+  // tsconfig.json has no `include`, so tsc compiles every .ts file it is not told to skip.
+  // test-oxlint/ holds TypeScript on purpose (with seeded violations) and sits outside
+  // rootDir: unless it is excluded, `tsc` fails and so does every publish.
+  const tsconfig = read("./tsconfig.json");
+  assert.equal(tsconfig.include, undefined, "this test assumes the build has no include list");
+  for (const dir of ["test-oxlint", "node_modules", "dist"])
+    assert.ok(tsconfig.exclude.includes(dir), `${dir} is excluded from the build`);
+});
+
 // ── oxlint itself ──────────────────────────────────────────────────────────────────────
 
 const PROJECT = fileURLToPath(new URL("./test-oxlint/", import.meta.url));
