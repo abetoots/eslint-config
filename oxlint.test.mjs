@@ -255,7 +255,7 @@ test("the build leaves the test projects alone", () => {
   // rootDir: unless it is excluded, `tsc` fails and so does every publish.
   const tsconfig = read("./tsconfig.json");
   assert.equal(tsconfig.include, undefined, "this test assumes the build has no include list");
-  for (const dir of ["test-oxlint", "node_modules", "dist"])
+  for (const dir of ["test-oxlint", "test-consumer", "node_modules", "dist"])
     assert.ok(tsconfig.exclude.includes(dir), `${dir} is excluded from the build`);
 });
 
@@ -350,14 +350,15 @@ test("oxlint: a consumer with only the extends line gets the rules, with type in
 test("oxlint: a consumer with only the extends line runs the preset's rules and no rule category", () => {
   const preset = lint(PRESET);
   // exactly the rules the file switches on: with the `correctness` category on there are
-  // more, and without type information there are fewer
+  // more (the control below)
   assert.equal(preset.rules, rulesOn.size);
-  const evalFinding = "error eslint(no-eval) script.js";
-  assert.ok(!preset.findings.includes(evalFinding), "no-eval is not a rule of the preset");
+  // at any severity: left to itself oxlint reports its categories as warnings
+  const reportsEval = ({ findings }) => findings.some((f) => f.includes("(no-eval)"));
+  assert.ok(!reportsEval(preset), "no-eval is not a rule of the preset");
   // the control: the fixture does break a rule of that category, and a consumer who
   // switches the category on is told so. Without this, the lines above prove nothing.
   const withCategory = lint({ ...PRESET, categories: { correctness: "error" } });
-  assert.ok(withCategory.findings.includes(evalFinding));
+  assert.ok(reportsEval(withCategory));
   assert.ok(withCategory.rules > preset.rules);
 });
 
@@ -405,7 +406,8 @@ test("oxlint: other spellings of a rule's name switch the same rule off, as the 
 test("oxlint: extends takes a file path, and a package name is not one", () => {
   assert.throws(
     () => lint({ extends: ["@satoshibits/eslint-config/oxlint.json"] }),
-    /oxlint printed no report/,
+    // oxlint looks for the name as a file beside the configuration, and does not find it
+    /oxlint printed no report[\s\S]*eslint-config\/oxlint\.json[\s\S]*(NotFound|No such file)/,
   );
 });
 
@@ -413,6 +415,11 @@ test("oxlint: a JavaScript file needs an environment, and gets one from the cons
   const undef = (consumer) =>
     inFile(lint({ ...PRESET, ...consumer }).findings, "script.js").filter((f) => f.includes("(no-undef)"));
   // console and process
-  assert.equal(undef({}).length, 2);
+  assert.deepEqual(undef({}), [
+    "error eslint(no-undef) script.js",
+    "error eslint(no-undef) script.js",
+  ]);
+  // (the file is not clean after that: `process` has no type in this fixture, which has
+  // no @types/node, so a typed rule still reports its use. No test here is about that.)
   assert.deepEqual(undef({ env: { builtin: true, node: true } }), []);
 });

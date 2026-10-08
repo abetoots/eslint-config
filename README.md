@@ -98,7 +98,8 @@ that need type information, with no error to say so.
 
 ## Tests
 
-`pnpm test` does two things, and runs before every publish.
+`pnpm test` does two things, and runs before every publish (it needs Node 20.19 or later,
+which is oxlint's own floor).
 
 - It pins the file: its shape, its exact content by digest, and the package manifest.
 - It runs oxlint (a devDependency, at the floor of the peer range) on `test-oxlint/`, a
