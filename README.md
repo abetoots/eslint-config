@@ -18,8 +18,8 @@ information, for an edit loop or a commit hook.
 ## oxlint
 
 `@satoshibits/eslint-config/oxlint` is an oxlint configuration file for oxlint's type-aware
-mode. It is the rule set Websand runs: the ESLint preset's rules translated to oxlint, with
-two choices the ESLint preset does not make:
+mode. It is the rule set Websand's two apps share: the ESLint preset's rules translated to
+oxlint, with two choices the ESLint preset does not make:
 
 - `no-unused-vars` ignores names that start with `_` and rest siblings;
 - `typescript/consistent-type-imports` is on, with separate `import type` statements.
@@ -52,9 +52,10 @@ adds `no-var`, `prefer-const`, `prefer-rest-params` and `prefer-spread`.
 
 oxlint documents `extends` as carrying `rules`, `plugins` and `overrides`. That `categories`
 and `options` came through as well is what 1.87 does, not what it promises. Repeat both in
-your own file, as above: without `categories.correctness: "off"` oxlint runs its whole
-`correctness` category on top of the preset, and without `options.typeAware` the typed
-rules, most of the preset, do not run at all.
+your own file, as above. Today that changes nothing. If a later oxlint stops carrying them,
+a consumer without `categories.correctness: "off"` would get oxlint's whole `correctness`
+category on top of the preset, and one without `options.typeAware` would lose the typed
+rules, most of the preset, with no error to say so.
 
 ### Changing a rule
 
@@ -62,7 +63,9 @@ rules, most of the preset, do not run at all.
   root (measured: `"typescript/no-floating-promises": "off"` silences it).
 - The 21 rules of the TypeScript override are different: your root `rules` do not reach
   them (measured: a root `"no-var": "off"` leaves `no-var` firing in a `.ts` file). Change
-  one with an override of your own: `{ "files": ["**/*.ts"], "rules": { "no-var": "off" } }`.
+  one with an override of your own, for the files you mean. The preset's override covers
+  `**/*.ts`, `**/*.tsx`, `**/*.mts` and `**/*.cts`; to switch a rule off for all of them:
+  `{ "files": ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"], "rules": { "no-var": "off" } }`.
 - **Write a rule under oxlint's own name.** oxlint reads several other spellings as the
   same rule: `@typescript-eslint/no-floating-promises: off`, or the bare
   `no-floating-promises: off`, switches `typescript/no-floating-promises` off, and

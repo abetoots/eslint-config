@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 const read = (name) => JSON.parse(readFileSync(new URL(name, import.meta.url), "utf8"));
 const config = read("./oxlint.json");
@@ -170,23 +171,71 @@ test("the one override is for TypeScript files: it drops what the compiler repor
   assert.deepEqual(keysAt("warn"), []);
 });
 
-test("the package ships the file, resolves it under both names, and keeps its peers straight", () => {
-  assert.ok(pkg.files.some((entry) => entry.replace(/^\.\//, "") === "oxlint.json"));
+test("no rule key is written twice in the file itself", () => {
+  // JSON.parse keeps the last of two equal keys, so the parsed object, and with it the
+  // digest and every test above, cannot see a duplicate. What oxlint does with one is not
+  // measured; the file must not have one.
+  const text = readFileSync(new URL("./oxlint.json", import.meta.url), "utf8");
+  const blocks = text.split(/"rules":\s*\{/).slice(1);
+  assert.equal(blocks.length, sources.length, "one rules block per source");
+  for (const block of blocks) {
+    // a rule key sits at the block's own depth: track braces and brackets to skip options
+    const seen = new Set();
+    let depth = 0;
+    for (const match of block.matchAll(/"((?:[^"\\]|\\.)*)"\s*:|[{}\[\]]/g)) {
+      const token = match[0];
+      if (token === "{" || token === "[") depth += 1;
+      else if (token === "}" || token === "]") {
+        if (depth === 0) break; // the end of this rules block
+        depth -= 1;
+      } else if (depth === 0) {
+        assert.ok(!seen.has(match[1]), `"${match[1]}" is written twice in one rules block`);
+        seen.add(match[1]);
+      }
+    }
+    assert.ok(seen.size > 0);
+  }
+});
+
+test("the package ships the file, resolves it under both names, and keeps its manifest straight", () => {
+  assert.deepEqual(pkg.files, ["./dist/**/*", "./oxlint.json"]);
+  assert.deepEqual(pkg.exports, {
+    ".": {
+      types: "./dist/index.d.mts",
+      import: "./dist/index.mjs",
+      default: "./dist/index.mjs",
+    },
+    "./oxlint": "./oxlint.json",
+    "./oxlint.json": "./oxlint.json",
+  });
+  assert.equal(pkg.type, "module");
+  assert.equal(pkg.private, false);
   // the package resolving itself: no install needed, and a wrong target fails here
   const require = createRequire(import.meta.url);
   for (const specifier of ["@satoshibits/eslint-config/oxlint", "@satoshibits/eslint-config/oxlint.json"])
-    assert.equal(require.resolve(specifier), new URL("./oxlint.json", import.meta.url).pathname);
-  assert.equal(pkg.exports["."].import, "./dist/index.mjs", "the ESLint export is untouched");
-  // oxlint is optional (an ESLint-only project need not install it); the ESLint packages
-  // stay required, as they were
-  assert.equal(pkg.peerDependencies.oxlint, ">= 1.87.0");
-  assert.equal(pkg.peerDependencies["oxlint-tsgolint"], ">= 7.0.2003");
+    assert.equal(require.resolve(specifier), fileURLToPath(new URL("./oxlint.json", import.meta.url)));
+  // oxlint is an optional peer (an ESLint-only project need not install it); the ESLint
+  // packages stay required peers, as they were; nothing is a hard dependency
+  assert.deepEqual(pkg.peerDependencies, {
+    "@eslint/js": "^9.13.0",
+    eslint: ">= 9.13.0",
+    "eslint-config-prettier": ">= 9.1.0",
+    "eslint-import-resolver-typescript": ">= 3.6.3",
+    "eslint-plugin-import-x": ">= 4.3.1",
+    typescript: ">= 5.6.2",
+    "typescript-eslint": ">= 8.15.0",
+    oxlint: ">= 1.87.0",
+    "oxlint-tsgolint": ">= 7.0.2003",
+  });
   assert.deepEqual(pkg.peerDependenciesMeta, {
     oxlint: { optional: true },
     "oxlint-tsgolint": { optional: true },
   });
-  for (const peer of ["eslint", "@eslint/js", "typescript-eslint", "eslint-plugin-import-x"])
-    assert.ok(pkg.peerDependencies[peer], `${peer} is still a peer`);
+  assert.equal(pkg.dependencies, undefined);
   assert.equal(read("./jsr.json").version, pkg.version);
-  assert.match(pkg.scripts.prepublishOnly, /npm test/);
+  // a publish runs these tests first, and nothing else runs them (there is no CI here)
+  assert.equal(pkg.scripts.test, "node --test oxlint.test.mjs");
+  assert.equal(pkg.scripts.prepublishOnly, "npm test && npm run build");
+  // the npm page must not promise more than the README does
+  assert.doesNotMatch(pkg.description, /same rule set/);
 });

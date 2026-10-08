@@ -31,7 +31,7 @@
   ],
   "author": "Abe Caymo (https://abecaymo.netlify.app/)",
   "license": "ISC",
-  "description": "The lint configuration for satoshibits projects: an ESLint flat config and the same rule set for oxlint.",
+  "description": "The lint configuration for satoshibits projects: an ESLint flat config and an oxlint rule set derived from it.",
   "peerDependencies": {
     "@eslint/js": "^9.13.0",
     "eslint": ">= 9.13.0",
