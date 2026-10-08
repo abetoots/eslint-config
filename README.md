@@ -54,8 +54,8 @@ oxlint documents `extends` as carrying `rules`, `plugins` and `overrides`. That 
 and `options` came through as well is what 1.87 does, not what it promises. Repeat both in
 your own file, as above. Today that changes nothing. If a later oxlint stops carrying them,
 a consumer without `categories.correctness: "off"` would get oxlint's whole `correctness`
-category on top of the preset, and one without `options.typeAware` would lose the typed
-rules, most of the preset, with no error to say so.
+category on top of the preset, and one without `options.typeAware` would lose the 31 rules
+that need type information, with no error to say so.
 
 ### Changing a rule
 
@@ -90,12 +90,23 @@ rules, most of the preset, with no error to say so.
 - **The ESLint packages are still required peers of this package.** A project that only
   wants the oxlint file will have them installed, or be warned about them, by its package
   manager. Nothing loads them.
-- **The path is the file's real location.** Under pnpm it exists only in the package that
-  declares the dependency; in a monorepo, extend it from that package's own configuration.
+- **`extends` takes a file path, not a package name** (measured: oxlint 1.87 looks for
+  `@satoshibits/eslint-config/oxlint.json` as a relative file and fails). Under pnpm the
+  path exists only in the package that declares the dependency; in a monorepo, extend it
+  from that package's own configuration.
 - **The oxlint export is in the npm package only**, not in the JSR one.
 
-`pnpm test` checks the file's shape and pins its content. It does not run oxlint, which is
-not a dependency here: that every rule name exists, that the file parses, and that the
-rules fire were checked in a consuming repository, against one seeded violation per
-type-aware rule, on oxlint 1.87 and oxlint-tsgolint 7.0.2003. The peer ranges are
-open-ended; a later oxlint may behave differently.
+## Tests
+
+`pnpm test` does two things, and runs before every publish.
+
+- It pins the file: its shape, its exact content by digest, and the package manifest.
+- It runs oxlint (a devDependency, at the floor of the peer range) on `test-oxlint/`, a
+  tiny project with seeded violations, through a consumer configuration that extends the
+  file. That checks that every rule name is in oxlint's table, that a consumer with only
+  the `extends` line gets the typed rules and no extra category, and each statement under
+  "Changing a rule" and about JavaScript files above.
+
+It does not seed a violation for every rule. That was done in a consuming repository, one
+per type-aware rule. The peer ranges are open-ended; a later oxlint is checked here when
+the devDependency is bumped.

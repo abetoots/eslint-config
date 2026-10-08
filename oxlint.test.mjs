@@ -1,13 +1,18 @@
-// node --test: the shape and the content of oxlint.json.
+// node --test: oxlint.json, in two parts.
 //
-// It does not run oxlint, which is not a dependency here. So it cannot show that a rule
-// name exists, that the file parses, that `extends` carries what the README says, or that
-// any rule fires: those were checked in a consuming repository on oxlint 1.87, against one
-// seeded violation per type-aware rule. What it can do is make every change to the file
-// deliberate (the digest below) and hold the properties a reader would assume.
+// The shape and the content: properties a reader would assume, and a digest that makes
+// every change to the file a deliberate one.
+//
+// oxlint itself, run on test-oxlint/ (a tiny project with seeded violations) through a
+// consumer configuration that extends the file: every rule name exists, `extends` carries
+// what the README says it carries, and the README's statements about changing a rule
+// hold. That is on the oxlint version installed here, the floor of the peer range; a later
+// oxlint is checked when this devDependency is bumped. It is not one seeded violation per
+// rule: that was done in a consuming repository, for the type-aware rules.
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -173,25 +178,29 @@ test("the one override is for TypeScript files: it drops what the compiler repor
 
 test("no rule key is written twice in the file itself", () => {
   // JSON.parse keeps the last of two equal keys, so the parsed object, and with it the
-  // digest and every test above, cannot see a duplicate. What oxlint does with one is not
-  // measured; the file must not have one.
+  // digest and every test above, cannot see a duplicate rule. What oxlint does with one is
+  // not measured; the file must not have one. (Rule keys only: a repeated key elsewhere
+  // in the file is not looked for.)
   const text = readFileSync(new URL("./oxlint.json", import.meta.url), "utf8");
   const blocks = text.split(/"rules":\s*\{/).slice(1);
   assert.equal(blocks.length, sources.length, "one rules block per source");
   for (const block of blocks) {
-    // a rule key sits at the block's own depth: track braces and brackets to skip options
+    // a rule key sits at the block's own depth. Whole strings are matched first, so a
+    // brace or bracket inside one (a regex in a rule's options) is not read as structure;
+    // a string is a key when a colon follows it
     const seen = new Set();
     let depth = 0;
-    for (const match of block.matchAll(/"((?:[^"\\]|\\.)*)"\s*:|[{}\[\]]/g)) {
+    for (const match of block.matchAll(/("(?:[^"\\]|\\.)*")(\s*:)?|[{}\[\]]/g)) {
       const token = match[0];
-      if (token === "{" || token === "[") depth += 1;
-      else if (token === "}" || token === "]") {
-        if (depth === 0) break; // the end of this rules block
-        depth -= 1;
-      } else if (depth === 0) {
-        assert.ok(!seen.has(match[1]), `"${match[1]}" is written twice in one rules block`);
-        seen.add(match[1]);
-      }
+      if (match[1] !== undefined) {
+        if (match[2] === undefined || depth !== 0) continue;
+        // compared as JSON reads them, so an escaped spelling of a key is the same key
+        const key = JSON.parse(match[1]);
+        assert.ok(!seen.has(key), `"${key}" is written twice in one rules block`);
+        seen.add(key);
+      } else if (token === "{" || token === "[") depth += 1;
+      else if (depth === 0) break; // the end of this rules block
+      else depth -= 1;
     }
     assert.ok(seen.size > 0);
   }
@@ -238,4 +247,110 @@ test("the package ships the file, resolves it under both names, and keeps its ma
   assert.equal(pkg.scripts.prepublishOnly, "npm test && npm run build");
   // the npm page must not promise more than the README does
   assert.doesNotMatch(pkg.description, /same rule set/);
+});
+
+// ── oxlint itself ──────────────────────────────────────────────────────────────────────
+
+const PROJECT = fileURLToPath(new URL("./test-oxlint/", import.meta.url));
+const OXLINT = fileURLToPath(new URL("./node_modules/.bin/oxlint", import.meta.url));
+
+/** Run oxlint on the fixture project under a consumer configuration; findings as "severity code file". */
+function lint(consumer) {
+  const file = `${PROJECT}.oxlintrc.test-${process.pid}.json`;
+  writeFileSync(file, JSON.stringify(consumer));
+  try {
+    const run = spawnSync(OXLINT, ["-c", file, "--format", "json", "src"], {
+      cwd: PROJECT,
+      encoding: "utf8",
+    });
+    if (run.error) throw run.error;
+    const start = run.stdout.indexOf("{");
+    assert.notEqual(start, -1, `oxlint printed no report: ${run.stdout}${run.stderr}`);
+    const report = JSON.parse(run.stdout.slice(start));
+    // "nothing reported" must never be read off a run that linted nothing
+    assert.equal(report.number_of_files, 3);
+    return report.diagnostics
+      .map((d) => `${d.severity} ${d.code} ${String(d.filename).replace(/^.*src\//, "")}`)
+      .sort();
+  } finally {
+    rmSync(file, { force: true });
+  }
+}
+const PRESET = { extends: ["../oxlint.json"] };
+const inFile = (findings, name) => [...new Set(findings.filter((f) => f.endsWith(` ${name}`)))];
+// what the fixture's TypeScript file reports under the preset, and nothing else
+const PROBE = [
+  "error eslint(no-var) probe.ts",
+  "error typescript(no-floating-promises) probe.ts",
+  "warning import(no-duplicates) probe.ts",
+];
+
+test("oxlint: every rule in the file is a rule of oxlint's, under the name its table gives it", () => {
+  const run = spawnSync(OXLINT, ["--rules", "--format", "json"], { encoding: "utf8" });
+  if (run.error) throw run.error;
+  const table = new Set(
+    JSON.parse(run.stdout).map((rule) =>
+      rule.scope === "eslint" ? rule.value : `${rule.scope.replaceAll("_", "-")}/${rule.value}`,
+    ),
+  );
+  assert.ok(table.size > 500, "the table was read");
+  // a name outside the table is a typo, or one of the other spellings oxlint accepts for
+  // an existing rule (see the README), which would be a second key for it
+  const unknown = sources.flatMap((source) => Object.keys(source.rules)).filter((key) => !table.has(key));
+  assert.deepEqual(unknown, []);
+});
+
+test("oxlint: a consumer with only the extends line gets the rules, type information and nothing extra", () => {
+  const findings = lint(PRESET);
+  // a typed rule with no --type-aware flag, a rule from the TypeScript override, a warning
+  assert.deepEqual(inFile(findings, "probe.ts"), PROBE);
+  assert.deepEqual(inFile(findings, "a.ts"), []);
+  // only the listed rules run: every finding is a rule of the preset, so no rule category
+  // was switched on behind it
+  const presetCodes = new Set(
+    sources.flatMap((source) =>
+      Object.keys(source.rules).map((key) =>
+        key.includes("/") ? `${key.split("/")[0]}(${key.split("/")[1]})` : `eslint(${key})`,
+      ),
+    ),
+  );
+  for (const finding of findings)
+    assert.ok(presetCodes.has(finding.split(" ")[1]), `${finding} is not a rule of the preset`);
+});
+
+test("oxlint: the README's example, which repeats categories and options, lints the same", () => {
+  assert.deepEqual(
+    lint({
+      ...PRESET,
+      categories: { correctness: "off" },
+      options: { typeAware: true },
+      rules: { "no-restricted-imports": ["error", { paths: ["some-barrel"] }] },
+    }),
+    lint(PRESET),
+  );
+});
+
+test("oxlint: a consumer changes a root rule in its rules, and an override rule only with an override", () => {
+  const without = (code) => PROBE.filter((finding) => !finding.includes(code));
+  // a rule the preset sets at its root
+  assert.deepEqual(
+    inFile(lint({ ...PRESET, rules: { "typescript/no-floating-promises": "off" } }), "probe.ts"),
+    without("no-floating-promises"),
+  );
+  // a rule of the preset's TypeScript override: the consumer's root rules do not reach it
+  assert.deepEqual(inFile(lint({ ...PRESET, rules: { "no-var": "off" } }), "probe.ts"), PROBE);
+  // an override of the consumer's own does
+  assert.deepEqual(
+    inFile(
+      lint({ ...PRESET, overrides: [{ files: ["**/*.ts"], rules: { "no-var": "off" } }] }),
+      "probe.ts",
+    ),
+    without("no-var"),
+  );
+});
+
+test("oxlint: a JavaScript file needs an environment, and gets one from the consumer", () => {
+  const undef = (findings) => inFile(findings, "script.js").filter((f) => f.includes("no-undef"));
+  assert.deepEqual(undef(lint(PRESET)), ["error eslint(no-undef) script.js"]);
+  assert.deepEqual(undef(lint({ ...PRESET, env: { builtin: true, node: true } })), []);
 });
