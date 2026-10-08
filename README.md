@@ -103,9 +103,11 @@ that need type information, with no error to say so.
 - It pins the file: its shape, its exact content by digest, and the package manifest.
 - It runs oxlint (a devDependency, at the floor of the peer range) on `test-oxlint/`, a
   tiny project with seeded violations, through a consumer configuration that extends the
-  file. That checks that every rule name is in oxlint's table, that a consumer with only
-  the `extends` line gets the typed rules and no extra category, and each statement under
-  "Changing a rule" and about JavaScript files above.
+  file. That checks that every rule name is in oxlint's table; that a consumer with only
+  the `extends` line gets a typed rule and runs exactly the preset's rules (a violation of
+  a rule from the `correctness` category is seeded, and reported only when a consumer
+  switches the category on); each statement under "Changing a rule"; that `extends` does
+  not take a package name; and what is said about JavaScript files.
 
 It does not seed a violation for every rule. That was done in a consuming repository, one
 per type-aware rule. The peer ranges are open-ended; a later oxlint is checked here when

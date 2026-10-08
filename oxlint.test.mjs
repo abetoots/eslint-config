@@ -182,7 +182,7 @@ test("no rule key is written twice in the file itself", () => {
   // not measured; the file must not have one. (Rule keys only: a repeated key elsewhere
   // in the file is not looked for.)
   const text = readFileSync(new URL("./oxlint.json", import.meta.url), "utf8");
-  const blocks = text.split(/"rules":\s*\{/).slice(1);
+  const blocks = text.split(/"rules"\s*:\s*\{/).slice(1);
   assert.equal(blocks.length, sources.length, "one rules block per source");
   for (const block of blocks) {
     // a rule key sits at the block's own depth. Whole strings are matched first, so a
@@ -262,105 +262,155 @@ test("the build leaves the test projects alone", () => {
 // ── oxlint itself ──────────────────────────────────────────────────────────────────────
 
 const PROJECT = fileURLToPath(new URL("./test-oxlint/", import.meta.url));
-const OXLINT = fileURLToPath(new URL("./node_modules/.bin/oxlint", import.meta.url));
+// oxlint's own entry script, run with this node: the .bin shim is not portable to Windows
+const OXLINT = fileURLToPath(new URL("./node_modules/oxlint/bin/oxlint", import.meta.url));
+const oxlint = (args) => {
+  // in the fixture project, with a limit: `oxlint --rules` was seen to hang from `/`
+  const run = spawnSync(process.execPath, [OXLINT, ...args], {
+    cwd: PROJECT,
+    encoding: "utf8",
+    timeout: 60_000,
+  });
+  if (run.error) throw run.error;
+  return run;
+};
 
-/** Run oxlint on the fixture project under a consumer configuration; findings as "severity code file". */
+/**
+ * Run oxlint on the fixture project under a consumer configuration. Returns the findings
+ * as "severity code file" (one per diagnostic, sorted) and how many rules oxlint ran.
+ */
 function lint(consumer) {
   const file = `${PROJECT}.oxlintrc.test-${process.pid}.json`;
   writeFileSync(file, JSON.stringify(consumer));
   try {
-    const run = spawnSync(OXLINT, ["-c", file, "--format", "json", "src"], {
-      cwd: PROJECT,
-      encoding: "utf8",
-    });
-    if (run.error) throw run.error;
-    const start = run.stdout.indexOf("{");
-    assert.notEqual(start, -1, `oxlint printed no report: ${run.stdout}${run.stderr}`);
-    const report = JSON.parse(run.stdout.slice(start));
+    const run = oxlint(["-c", file, "--format", "json", "src"]);
+    let report;
+    try {
+      report = JSON.parse(run.stdout.slice(run.stdout.indexOf("{")));
+    } catch {
+      throw new Error(`oxlint printed no report:\n${run.stdout}${run.stderr}`);
+    }
     // "nothing reported" must never be read off a run that linted nothing
-    assert.equal(report.number_of_files, 3);
-    return report.diagnostics
-      .map((d) => `${d.severity} ${d.code} ${String(d.filename).replace(/^.*src\//, "")}`)
-      .sort();
+    assert.equal(report.number_of_files, 3, "test-oxlint/src holds three files to lint");
+    return {
+      rules: report.number_of_rules,
+      findings: report.diagnostics
+        .map((d) => `${d.severity} ${d.code} ${String(d.filename).replace(/^.*src\//, "")}`)
+        .sort(),
+    };
   } finally {
     rmSync(file, { force: true });
   }
 }
 const PRESET = { extends: ["../oxlint.json"] };
-const inFile = (findings, name) => [...new Set(findings.filter((f) => f.endsWith(` ${name}`)))];
+const inFile = (findings, name) => findings.filter((f) => f.endsWith(` ${name}`));
 // what the fixture's TypeScript file reports under the preset, and nothing else
 const PROBE = [
+  "error eslint(no-unused-vars) probe.ts",
   "error eslint(no-var) probe.ts",
   "error typescript(no-floating-promises) probe.ts",
   "warning import(no-duplicates) probe.ts",
 ];
+const without = (code) => PROBE.filter((finding) => !finding.includes(`(${code})`));
+const ruleTable = () => JSON.parse(oxlint(["--rules", "--format", "json"]).stdout);
+const tableKey = (rule) =>
+  rule.scope === "eslint" ? rule.value : `${rule.scope.replaceAll("_", "-")}/${rule.value}`;
+// every rule the file switches on somewhere: what oxlint should report it ran
+const rulesOn = new Set(
+  sources.flatMap((source) =>
+    Object.entries(source.rules)
+      .filter(([, entry]) => severity(entry) !== "off")
+      .map(([key]) => key),
+  ),
+);
 
 test("oxlint: every rule in the file is a rule of oxlint's, under the name its table gives it", () => {
-  const run = spawnSync(OXLINT, ["--rules", "--format", "json"], { encoding: "utf8" });
-  if (run.error) throw run.error;
-  const table = new Set(
-    JSON.parse(run.stdout).map((rule) =>
-      rule.scope === "eslint" ? rule.value : `${rule.scope.replaceAll("_", "-")}/${rule.value}`,
-    ),
-  );
-  assert.ok(table.size > 500, "the table was read");
+  const table = ruleTable();
+  const names = new Set(table.map(tableKey));
+  assert.ok(names.size > 500, "the table was read");
   // a name outside the table is a typo, or one of the other spellings oxlint accepts for
   // an existing rule (see the README), which would be a second key for it
-  const unknown = sources.flatMap((source) => Object.keys(source.rules)).filter((key) => !table.has(key));
+  const unknown = sources.flatMap((source) => Object.keys(source.rules)).filter((key) => !names.has(key));
   assert.deepEqual(unknown, []);
+  // the README's count of the rules that need type information
+  const typed = new Set(table.filter((rule) => rule.type_aware === true).map(tableKey));
+  assert.equal(Object.keys(config.rules).filter((key) => typed.has(key)).length, 31);
 });
 
-test("oxlint: a consumer with only the extends line gets the rules, type information and nothing extra", () => {
-  const findings = lint(PRESET);
-  // a typed rule with no --type-aware flag, a rule from the TypeScript override, a warning
+test("oxlint: a consumer with only the extends line gets the rules, with type information", () => {
+  const { findings } = lint(PRESET);
+  // a typed rule with no --type-aware flag, a core rule with its options (the `_ignored`
+  // parameter is not reported), a rule from the TypeScript override, and a warning
   assert.deepEqual(inFile(findings, "probe.ts"), PROBE);
   assert.deepEqual(inFile(findings, "a.ts"), []);
-  // only the listed rules run: every finding is a rule of the preset, so no rule category
-  // was switched on behind it
-  const presetCodes = new Set(
-    sources.flatMap((source) =>
-      Object.keys(source.rules).map((key) =>
-        key.includes("/") ? `${key.split("/")[0]}(${key.split("/")[1]})` : `eslint(${key})`,
-      ),
-    ),
-  );
-  for (const finding of findings)
-    assert.ok(presetCodes.has(finding.split(" ")[1]), `${finding} is not a rule of the preset`);
+});
+
+test("oxlint: a consumer with only the extends line runs the preset's rules and no rule category", () => {
+  const preset = lint(PRESET);
+  // exactly the rules the file switches on: with the `correctness` category on there are
+  // more, and without type information there are fewer
+  assert.equal(preset.rules, rulesOn.size);
+  const evalFinding = "error eslint(no-eval) script.js";
+  assert.ok(!preset.findings.includes(evalFinding), "no-eval is not a rule of the preset");
+  // the control: the fixture does break a rule of that category, and a consumer who
+  // switches the category on is told so. Without this, the lines above prove nothing.
+  const withCategory = lint({ ...PRESET, categories: { correctness: "error" } });
+  assert.ok(withCategory.findings.includes(evalFinding));
+  assert.ok(withCategory.rules > preset.rules);
 });
 
 test("oxlint: the README's example, which repeats categories and options, lints the same", () => {
-  assert.deepEqual(
-    lint({
-      ...PRESET,
-      categories: { correctness: "off" },
-      options: { typeAware: true },
-      rules: { "no-restricted-imports": ["error", { paths: ["some-barrel"] }] },
-    }),
-    lint(PRESET),
-  );
+  const preset = lint(PRESET);
+  const example = lint({
+    ...PRESET,
+    categories: { correctness: "off" },
+    options: { typeAware: true },
+    rules: { "no-restricted-imports": ["error", { paths: ["some-barrel"] }] },
+  });
+  assert.deepEqual(example.findings, preset.findings);
+  // the one rule the example adds, and no category
+  assert.equal(example.rules, preset.rules + 1);
 });
 
 test("oxlint: a consumer changes a root rule in its rules, and an override rule only with an override", () => {
-  const without = (code) => PROBE.filter((finding) => !finding.includes(code));
+  const probe = (consumer) => inFile(lint({ ...PRESET, ...consumer }).findings, "probe.ts");
   // a rule the preset sets at its root
   assert.deepEqual(
-    inFile(lint({ ...PRESET, rules: { "typescript/no-floating-promises": "off" } }), "probe.ts"),
+    probe({ rules: { "typescript/no-floating-promises": "off" } }),
     without("no-floating-promises"),
   );
   // a rule of the preset's TypeScript override: the consumer's root rules do not reach it
-  assert.deepEqual(inFile(lint({ ...PRESET, rules: { "no-var": "off" } }), "probe.ts"), PROBE);
+  assert.deepEqual(probe({ rules: { "no-var": "off" } }), PROBE);
   // an override of the consumer's own does
   assert.deepEqual(
-    inFile(
-      lint({ ...PRESET, overrides: [{ files: ["**/*.ts"], rules: { "no-var": "off" } }] }),
-      "probe.ts",
-    ),
+    probe({ overrides: [{ files: ["**/*.ts"], rules: { "no-var": "off" } }] }),
     without("no-var"),
   );
 });
 
+test("oxlint: other spellings of a rule's name switch the same rule off, as the README warns", () => {
+  const probe = (rules) => inFile(lint({ ...PRESET, rules }).findings, "probe.ts");
+  // ESLint's name, and the bare name of a typed rule
+  assert.deepEqual(
+    probe({ "@typescript-eslint/no-floating-promises": "off" }),
+    without("no-floating-promises"),
+  );
+  assert.deepEqual(probe({ "no-floating-promises": "off" }), without("no-floating-promises"));
+  // a core rule under the typescript prefix
+  assert.deepEqual(probe({ "typescript/no-unused-vars": "off" }), without("no-unused-vars"));
+});
+
+test("oxlint: extends takes a file path, and a package name is not one", () => {
+  assert.throws(
+    () => lint({ extends: ["@satoshibits/eslint-config/oxlint.json"] }),
+    /oxlint printed no report/,
+  );
+});
+
 test("oxlint: a JavaScript file needs an environment, and gets one from the consumer", () => {
-  const undef = (findings) => inFile(findings, "script.js").filter((f) => f.includes("no-undef"));
-  assert.deepEqual(undef(lint(PRESET)), ["error eslint(no-undef) script.js"]);
-  assert.deepEqual(undef(lint({ ...PRESET, env: { builtin: true, node: true } })), []);
+  const undef = (consumer) =>
+    inFile(lint({ ...PRESET, ...consumer }).findings, "script.js").filter((f) => f.includes("(no-undef)"));
+  // console and process
+  assert.equal(undef({}).length, 2);
+  assert.deepEqual(undef({ env: { builtin: true, node: true } }), []);
 });
